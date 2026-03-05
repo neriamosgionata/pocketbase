@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -17,7 +16,7 @@ var defaultRetryIntervals = []int{50, 100, 150, 200, 300, 400, 500, 700, 1000}
 // default max retry attempts
 const defaultMaxLockRetries = 12
 
-func execLockRetry(timeout time.Duration, maxRetries int) dbx.ExecHookFunc {
+func execLockRetry(dialect DBDialect, timeout time.Duration, maxRetries int) dbx.ExecHookFunc {
 	return func(q *dbx.Query, op func() error) error {
 		if q.Context() == nil {
 			cancelCtx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -29,7 +28,7 @@ func execLockRetry(timeout time.Duration, maxRetries int) dbx.ExecHookFunc {
 			q.WithContext(cancelCtx)
 		}
 
-		execErr := baseLockRetry(func(attempt int) error {
+		execErr := baseLockRetry(dialect, func(attempt int) error {
 			return op()
 		}, maxRetries)
 		if execErr != nil && !errors.Is(execErr, sql.ErrNoRows) {
@@ -40,22 +39,17 @@ func execLockRetry(timeout time.Duration, maxRetries int) dbx.ExecHookFunc {
 	}
 }
 
-func baseLockRetry(op func(attempt int) error, maxRetries int) error {
+func baseLockRetry(dialect DBDialect, op func(attempt int) error, maxRetries int) error {
 	attempt := 1
 
 Retry:
 	err := op(attempt)
 
-	if err != nil && attempt <= maxRetries {
-		errStr := err.Error()
-		// we are checking the error against the plain error texts since the codes could vary between drivers
-		if strings.Contains(errStr, "database is locked") ||
-			strings.Contains(errStr, "table is locked") {
-			// wait and retry
-			time.Sleep(getDefaultRetryInterval(attempt))
-			attempt++
-			goto Retry
-		}
+	if err != nil && attempt <= maxRetries && dialect.IsLockError(err) {
+		// wait and retry
+		time.Sleep(getDefaultRetryInterval(attempt))
+		attempt++
+		goto Retry
 	}
 
 	return err

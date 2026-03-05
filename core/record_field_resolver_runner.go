@@ -478,11 +478,11 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 
 			result := &search.ResolverResult{
 				NullFallback: search.NullFallbackDisabled,
-				Identifier:   dbutils.JSONExtract(r.activeTableAlias+"."+inflector.Columnify(prop), jsonPathStr),
+				Identifier:   r.resolver.app.DBDialect().JSONExtract(r.activeTableAlias+"."+inflector.Columnify(prop), jsonPathStr),
 			}
 
 			if r.withMultiMatch {
-				r.multiMatch.ValueIdentifier = dbutils.JSONExtract(r.multiMatchActiveTableAlias+"."+inflector.Columnify(prop), jsonPathStr)
+				r.multiMatch.ValueIdentifier = r.resolver.app.DBDialect().JSONExtract(r.multiMatchActiveTableAlias+"."+inflector.Columnify(prop), jsonPathStr)
 				result.MultiMatchSubQuery = r.multiMatch
 			}
 
@@ -571,7 +571,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 						"[[%s.id]] IN (SELECT [[%s.value]] FROM %s {{%s}})",
 						r.activeTableAlias,
 						jeAlias,
-						dbutils.JSONEach(newTableAlias+"."+cleanBackFieldName),
+						r.resolver.app.DBDialect().JSONEach(newTableAlias+"."+cleanBackFieldName),
 						jeAlias,
 					)),
 				)
@@ -617,7 +617,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 							"[[%s.id]] IN (SELECT [[%s.value]] FROM %s {{%s}})",
 							r.multiMatchActiveTableAlias,
 							jeAlias2,
-							dbutils.JSONEach(newTableAlias2+"."+cleanBackFieldName),
+							r.resolver.app.DBDialect().JSONEach(newTableAlias2+"."+cleanBackFieldName),
 							jeAlias2,
 						)),
 					},
@@ -673,7 +673,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 		} else {
 			jeAlias := "__je_" + newTableAlias
 
-			err := r.resolver.registerJoin(dbutils.JSONEach(prefixedFieldName), jeAlias, nil)
+			err := r.resolver.registerJoin(r.resolver.app.DBDialect().JSONEach(prefixedFieldName), jeAlias, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -715,7 +715,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 			r.multiMatch.Joins = append(
 				r.multiMatch.Joins,
 				&search.Join{
-					TableName:  dbutils.JSONEach(prefixedFieldName2),
+					TableName:  r.resolver.app.DBDialect().JSONEach(prefixedFieldName2),
 					TableAlias: jeAlias2,
 				},
 				&search.Join{
@@ -761,12 +761,12 @@ func (r *runner) finalizeActivePropsProcessing(collection *Collection, prop stri
 		jePair := r.activeTableAlias + "." + cleanFieldName
 
 		result := &search.ResolverResult{
-			Identifier: dbutils.JSONArrayLength(jePair),
+			Identifier: r.resolver.app.DBDialect().JSONArrayLength(jePair),
 		}
 
 		if r.withMultiMatch {
 			jePair2 := r.multiMatchActiveTableAlias + "." + cleanFieldName
-			r.multiMatch.ValueIdentifier = dbutils.JSONArrayLength(jePair2)
+			r.multiMatch.ValueIdentifier = r.resolver.app.DBDialect().JSONArrayLength(jePair2)
 			result.MultiMatchSubQuery = r.multiMatch
 		}
 
@@ -779,7 +779,7 @@ func (r *runner) finalizeActivePropsProcessing(collection *Collection, prop stri
 		jePair := r.activeTableAlias + "." + cleanFieldName
 		jeAlias := "__je_" + r.activeTableAlias + "_" + cleanFieldName + r.resolver.joinAliasSuffix
 
-		err := r.resolver.registerJoin(dbutils.JSONEach(jePair), jeAlias, nil)
+		err := r.resolver.registerJoin(r.resolver.app.DBDialect().JSONEach(jePair), jeAlias, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -797,7 +797,7 @@ func (r *runner) finalizeActivePropsProcessing(collection *Collection, prop stri
 			jeAlias2 := "__je_" + r.multiMatchActiveTableAlias + "_" + cleanFieldName + r.resolver.joinAliasSuffix
 
 			r.multiMatch.Joins = append(r.multiMatch.Joins, &search.Join{
-				TableName:  dbutils.JSONEach(jePair2),
+				TableName:  r.resolver.app.DBDialect().JSONEach(jePair2),
 				TableAlias: jeAlias2,
 			})
 			r.multiMatch.ValueIdentifier = fmt.Sprintf("[[%s.value]]", jeAlias2)
@@ -835,9 +835,9 @@ func (r *runner) finalizeActivePropsProcessing(collection *Collection, prop stri
 	// (https://github.com/pocketbase/pocketbase/issues/4068)
 	if field.Type() == FieldTypeJSON {
 		result.NullFallback = search.NullFallbackDisabled
-		result.Identifier = dbutils.JSONExtract(r.activeTableAlias+"."+cleanFieldName, "")
+		result.Identifier = r.resolver.app.DBDialect().JSONExtract(r.activeTableAlias+"."+cleanFieldName, "")
 		if r.withMultiMatch {
-			r.multiMatch.ValueIdentifier = dbutils.JSONExtract(r.multiMatchActiveTableAlias+"."+cleanFieldName, "")
+			r.multiMatch.ValueIdentifier = r.resolver.app.DBDialect().JSONExtract(r.multiMatchActiveTableAlias+"."+cleanFieldName, "")
 		}
 	}
 

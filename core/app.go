@@ -146,6 +146,13 @@ type App interface {
 	// DB methods
 	// ---------------------------------------------------------------
 
+	// DBDialect returns the database dialect used by the app.
+	//
+	// It defines database-specific operations (SQL generation, schema
+	// introspection, etc.) allowing PocketBase to work with multiple
+	// database backends (SQLite, MySQL, etc.).
+	DBDialect() DBDialect
+
 	// DB returns the default app data.db builder instance.
 	//
 	// To minimize SQLITE_BUSY errors, it automatically routes the

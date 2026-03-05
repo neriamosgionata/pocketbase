@@ -40,7 +40,7 @@ func TestBaseLockRetry(t *testing.T) {
 		t.Run(fmt.Sprintf("%d_%#v", i, s.err), func(t *testing.T) {
 			lastAttempt := 0
 
-			err := baseLockRetry(func(attempt int) error {
+			err := baseLockRetry(&SQLiteDialect{}, func(attempt int) error {
 				lastAttempt = attempt
 
 				if attempt < s.failUntilAttempt {

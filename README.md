@@ -13,6 +13,7 @@
 [PocketBase](https://pocketbase.io) is an open source Go backend that includes:
 
 - embedded database (_SQLite_) with **realtime subscriptions**
+- **MySQL 8.0+ support** via the database dialect abstraction layer
 - built-in **files and users management**
 - convenient **Admin dashboard UI**
 - and simple **REST-ish API**
@@ -118,6 +119,90 @@ windows 386
 windows amd64
 windows arm64
 ```
+
+### Using MySQL instead of SQLite
+
+PocketBase ships with SQLite as the default database, but includes a **database dialect abstraction layer** that enables MySQL 8.0+ support.
+
+To use MySQL, provide a `DBDialect` and a custom `DBConnect` function in your configuration:
+
+```go
+package main
+
+import (
+    "log"
+
+    _ "github.com/go-sql-driver/mysql"
+    "github.com/pocketbase/dbx"
+    "github.com/pocketbase/pocketbase"
+    "github.com/pocketbase/pocketbase/core"
+)
+
+func main() {
+    app := pocketbase.NewWithConfig(pocketbase.Config{
+        DBDialect: &core.MySQLDialect{},
+        DBConnect: func(dsn string) (*dbx.DB, error) {
+            // dsn receives the default file path (e.g. "pb_data/data.db");
+            // for MySQL, ignore it and use your own connection string.
+            return dbx.Open("mysql", "user:pass@tcp(localhost:3306)/pocketbase?parseTime=true")
+        },
+        DataDir: "pb_data", // still used for file storage
+    })
+
+    if err := app.Start(); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+The dialect abstraction covers:
+
+- **Schema introspection** -- `INFORMATION_SCHEMA` queries instead of SQLite PRAGMAs
+- **JSON functions** -- `JSON_TABLE` / `JSON_LENGTH` instead of `json_each` / `json_array_length`
+- **Date functions** -- `DATE_FORMAT` instead of `strftime`
+- **Column types** -- `VARCHAR(15) PRIMARY KEY` instead of `TEXT PRIMARY KEY DEFAULT (randomblob(...))`
+- **Lock/error detection** -- MySQL error codes 1205/1213 instead of "database is locked"
+- **DDL migrations** -- InnoDB tables with `utf8mb4` charset and `CURRENT_TIMESTAMP(3)` defaults
+- **Maintenance** -- `ANALYZE TABLE` instead of `PRAGMA wal_checkpoint` / `PRAGMA optimize`
+
+#### Database dialect interface
+
+The `core.DBDialect` interface can also be implemented for other database backends. The following methods must be provided:
+
+| Method | Purpose |
+|--------|---------|
+| `Name()` | Dialect identifier (e.g. `"sqlite"`, `"mysql"`) |
+| `Connect(dsn)` | Open a new DB connection |
+| `TableColumns(db, table)` | List column names |
+| `TableInfo(db, table)` | Column metadata |
+| `TableIndexes(db, table)` | Index name-to-SQL map |
+| `HasTable(db, table)` | Check table/view existence |
+| `Vacuum(db)` | Reclaim disk space |
+| `OptimizeAfterDDL(db, logger)` | Post-DDL optimization |
+| `PeriodicOptimize(db, auxDB, logger)` | Cron-scheduled maintenance |
+| `PrimaryKeyColumnType()` | PK column definition |
+| `JSONExtract(column, path)` | JSON value extraction expression |
+| `JSONEach(column)` | JSON array iteration table expression |
+| `JSONArrayLength(column)` | JSON array length expression |
+| `DateTruncHour(column)` | Truncate datetime to hour |
+| `IsLockError(err)` | Detect lock/busy errors |
+| `InitCollectionsSQL()` | DDL for `_collections` table |
+| `InitParamsSQL()` | DDL for `_params` table |
+| `InitLogsSQL()` | DDL for `_logs` table |
+
+#### Known Limitations / Future Work
+
+- **`strftime` filter function** -- The `strftime()` function exposed in PocketBase's API filter syntax (e.g. `?filter=strftime('%Y',created)='2024'`) currently generates SQLite-specific SQL. The `tools/search` package does not yet have access to the dialect. MySQL users should avoid using `strftime` in API filters until this is addressed.
+
+- **Backup and restore** -- The backup mechanism (`CreateBackup` / `RestoreBackup`) works by archiving the `pb_data` directory, which contains the SQLite database files. When using MySQL, the database files won't be in `pb_data`, so backups will only include file storage. A MySQL-compatible backup strategy (e.g. `mysqldump`) would need to be implemented separately.
+
+- **`dbutils` package** -- The original `JSONEach` / `JSONExtract` / `JSONArrayLength` helper functions in `tools/dbutils` remain available for backward compatibility but always produce SQLite syntax. Internal callers have been migrated to the dialect methods. External consumers should transition to `app.DBDialect().JSONEach(...)` etc.
+
+- **Dual-database architecture** -- PocketBase uses two separate databases (`data.db` for main data, `auxiliary.db` for logs). When using MySQL, the `DBConnect` function receives both paths and should map them to appropriate MySQL databases or schemas. A common approach is to use a single MySQL database for both.
+
+- **`no_default_driver` build tag** -- The existing `no_default_driver` build tag disables the default SQLite driver import. When using MySQL, you must provide both a custom `DBConnect` function and set `DBDialect` to `&core.MySQLDialect{}`. The build tag is not required when using MySQL but can be used to reduce binary size by excluding the SQLite driver.
+
+- **`geoDistance` filter function** -- The `geoDistance()` function in API filters uses `radians()`, `acos()`, `cos()`, and `sin()` SQL functions. These are available natively in MySQL but require the SQLite math extension. This function should work in both dialects without changes.
 
 ### Testing
 

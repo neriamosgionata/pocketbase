@@ -60,6 +60,7 @@ type Config struct {
 	AuxMaxOpenConns  int                // default to core.DefaultAuxMaxOpenConns
 	AuxMaxIdleConns  int                // default to core.DefaultAuxMaxIdleConns
 	DBConnect        core.DBConnectFunc // default to core.dbConnect
+	DBDialect        core.DBDialect     // default to core.SQLiteDialect
 }
 
 // New creates a new PocketBase instance with the default configuration.
@@ -135,6 +136,7 @@ func NewWithConfig(config Config) *PocketBase {
 		AuxMaxOpenConns:  config.AuxMaxOpenConns,
 		AuxMaxIdleConns:  config.AuxMaxIdleConns,
 		DBConnect:        config.DBConnect,
+		DBDialect:        config.DBDialect,
 	})
 
 	// hide the default help command (allow only `--help` flag)

@@ -57,6 +57,7 @@ type DBConnectFunc func(dbPath string) (*dbx.DB, error)
 // BaseAppConfig defines a BaseApp configuration option
 type BaseAppConfig struct {
 	DBConnect        DBConnectFunc
+	DBDialect        DBDialect
 	DataDir          string
 	EncryptionEnv    string
 	QueryTimeout     time.Duration
@@ -205,6 +206,9 @@ func NewBaseApp(config BaseAppConfig) *BaseApp {
 	}
 
 	// apply config defaults
+	if app.config.DBDialect == nil {
+		app.config.DBDialect = &SQLiteDialect{}
+	}
 	if app.config.DBConnect == nil {
 		app.config.DBConnect = DefaultDBConnect
 	}
@@ -375,6 +379,11 @@ func (app *BaseApp) TxInfo() *TxAppInfo {
 // IsTransactional checks if the current app instance is part of a transaction.
 func (app *BaseApp) IsTransactional() bool {
 	return app.TxInfo() != nil
+}
+
+// DBDialect returns the database dialect used by the app.
+func (app *BaseApp) DBDialect() DBDialect {
+	return app.config.DBDialect
 }
 
 // IsBootstrapped checks if the application was initialized
@@ -1357,20 +1366,7 @@ func (app *BaseApp) registerBaseHooks() {
 	})
 
 	app.Cron().Add("__pbDBOptimize__", "0 0 * * *", func() {
-		_, execErr := app.NonconcurrentDB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute()
-		if execErr != nil {
-			app.Logger().Warn("Failed to run periodic PRAGMA wal_checkpoint for the main DB", slog.String("error", execErr.Error()))
-		}
-
-		_, execErr = app.AuxNonconcurrentDB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute()
-		if execErr != nil {
-			app.Logger().Warn("Failed to run periodic PRAGMA wal_checkpoint for the auxiliary DB", slog.String("error", execErr.Error()))
-		}
-
-		_, execErr = app.NonconcurrentDB().NewQuery("PRAGMA optimize").Execute()
-		if execErr != nil {
-			app.Logger().Warn("Failed to run periodic PRAGMA optimize", slog.String("error", execErr.Error()))
-		}
+		app.DBDialect().PeriodicOptimize(app.NonconcurrentDB(), app.AuxNonconcurrentDB(), app.Logger())
 	})
 
 	app.registerSettingsHooks()
